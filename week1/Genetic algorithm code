@@ -1,0 +1,135 @@
+import random
+import matplotlib.pyplot as plt
+import numpy as np
+
+# -------------------- Problem Definition -------------------- #
+# Generate random coordinates for small delivery network (n=8 customers + depot)
+n_customers = 8
+coords = np.random.rand(n_customers+1, 2) * 100  # depot + customers
+
+def euclidean_distance(a, b):
+    return np.linalg.norm(a - b)
+
+# Distance matrix
+dist_matrix = np.zeros((n_customers+1, n_customers+1))
+for i in range(n_customers+1):
+    for j in range(n_customers+1):
+        dist_matrix[i, j] = euclidean_distance(coords[i], coords[j])
+
+# -------------------- GA Parameters -------------------- #
+POP_SIZE = 50
+GENERATIONS = 200
+CROSSOVER_RATE = 0.9
+MUTATION_RATE = 0.1
+ELITISM = 1
+
+# -------------------- GA Components -------------------- #
+def fitness(route):
+    """Calculate total distance of a route starting/ending at depot (0)."""
+    total_dist = dist_matrix[0, route[0]]
+    for i in range(len(route)-1):
+        total_dist += dist_matrix[route[i], route[i+1]]
+    total_dist += dist_matrix[route[-1], 0]
+    return 1 / total_dist  # minimize distance → maximize fitness
+
+def total_distance(route):
+    """Return distance instead of fitness."""
+    dist = dist_matrix[0, route[0]]
+    for i in range(len(route)-1):
+        dist += dist_matrix[route[i], route[i+1]]
+    dist += dist_matrix[route[-1], 0]
+    return dist
+
+def create_population():
+    return [random.sample(range(1, n_customers+1), n_customers) for _ in range(POP_SIZE)]
+
+def selection(pop, fitnesses):
+    """Tournament selection."""
+    k = 3
+    selected = []
+    for _ in range(len(pop)):
+        aspirants = random.sample(list(zip(pop, fitnesses)), k)
+        selected.append(max(aspirants, key=lambda x: x[1])[0])
+    return selected
+
+def crossover(parent1, parent2):
+    """Order Crossover (OX)."""
+    if random.random() > CROSSOVER_RATE:
+        return parent1[:]
+    start, end = sorted(random.sample(range(len(parent1)), 2))
+    child = [None]*len(parent1)
+    child[start:end] = parent1[start:end]
+    pos = end
+    for city in parent2:
+        if city not in child:
+            if pos >= len(parent1): pos = 0
+            child[pos] = city
+            pos += 1
+    return child
+
+def mutate(route):
+    if random.random() < MUTATION_RATE:
+        i, j = random.sample(range(len(route)), 2)
+        route[i], route[j] = route[j], route[i]
+    return route
+
+# -------------------- GA Main Loop -------------------- #
+population = create_population()
+best_distances = []
+best_solution = None
+best_distance = float("inf")
+
+for gen in range(GENERATIONS):
+    fitnesses = [fitness(ind) for ind in population]
+    distances = [total_distance(ind) for ind in population]
+
+    # Track best
+    gen_best = population[np.argmax(fitnesses)]
+    gen_best_dist = total_distance(gen_best)
+    if gen_best_dist < best_distance:
+        best_distance = gen_best_dist
+        best_solution = gen_best
+
+    best_distances.append(best_distance)
+
+    # Selection
+    selected = selection(population, fitnesses)
+
+    # Crossover + Mutation
+    next_pop = []
+    for i in range(0, POP_SIZE-ELITISM, 2):
+        p1, p2 = selected[i], selected[i+1]
+        child1, child2 = crossover(p1, p2), crossover(p2, p1)
+        next_pop.extend([mutate(child1), mutate(child2)])
+
+    # Elitism (keep best)
+    next_pop.extend([best_solution]*ELITISM)
+
+    population = next_pop
+
+# -------------------- Results -------------------- #
+print("Best Route (visiting order of customers):", best_solution)
+print("Best Distance:", round(best_distance, 2))
+
+# Plot best route
+route_coords = [coords[0]] + [coords[i] for i in best_solution] + [coords[0]]
+xs, ys = zip(*route_coords)
+
+plt.figure(figsize=(8,4))
+
+# Route plot
+plt.subplot(1,2,1)
+plt.plot(xs, ys, marker="o")
+for i, (x, y) in enumerate(coords):
+    plt.text(x+1, y+1, str(i), fontsize=9)
+plt.title("Best Route Found")
+
+# Fitness plot
+plt.subplot(1,2,2)
+plt.plot(best_distances)
+plt.title("Distance over Generations")
+plt.xlabel("Generation")
+plt.ylabel("Distance")
+
+plt.tight_layout()
+plt.show()
