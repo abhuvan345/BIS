@@ -1,0 +1,126 @@
+import random
+import math
+
+# -----------------------------
+# 1. Define Problem
+# -----------------------------
+# Example: Depot + Customers (x, y)
+locations = [(50, 50),  # Depot at index 0
+             (20, 30), (40, 20), (60, 80), (80, 40),
+             (30, 60), (70, 70), (90, 20), (10, 90)]
+
+n_customers = len(locations) - 1  # exclude depot
+
+# Distance function (Euclidean)
+def distance(a, b):
+    return math.sqrt((a[0]-b[0])**2 + (a[1]-b[1])**2)
+
+# Compute route distance (start & end at depot)
+def route_distance(route):
+    total = distance(locations[0], locations[route[0]])  # depot → first
+    for i in range(len(route)-1):
+        total += distance(locations[route[i]], locations[route[i+1]])
+    total += distance(locations[route[-1]], locations[0])  # last → depot
+    return total
+
+# -----------------------------
+# 2. Initialize GA Parameters
+# -----------------------------
+POP_SIZE = 50
+CROSSOVER_RATE = 0.8
+MUTATION_RATE = 0.2
+GENERATIONS = 200
+
+# -----------------------------
+# 3. Create Initial Population
+# -----------------------------
+def initial_population():
+    population = []
+    customers = list(range(1, n_customers+1))
+    for _ in range(POP_SIZE):
+        route = customers[:]
+        random.shuffle(route)
+        population.append(route)
+    return population
+
+# -----------------------------
+# 4. Fitness Function
+# -----------------------------
+def fitness(route):
+    return 1 / route_distance(route)
+
+# -----------------------------
+# 5. Selection (Tournament)
+# -----------------------------
+def selection(pop):
+    tournament = random.sample(pop, 5)
+    tournament.sort(key=lambda r: fitness(r), reverse=True)
+    return tournament[0]
+
+# -----------------------------
+# 6. Crossover (Order Crossover - OX)
+# -----------------------------
+def crossover(parent1, parent2):
+    if random.random() > CROSSOVER_RATE:
+        return parent1[:]
+
+    start, end = sorted(random.sample(range(len(parent1)), 2))
+    child = [None] * len(parent1)
+
+    # Copy slice from parent1
+    child[start:end] = parent1[start:end]
+
+    # Fill remaining from parent2
+    pos = end
+    for gene in parent2:
+        if gene not in child:
+            if pos >= len(parent2):
+                pos = 0
+            child[pos] = gene
+            pos += 1
+
+    return child
+
+# -----------------------------
+# 7. Mutation (Swap Mutation)
+# -----------------------------
+def mutate(route):
+    if random.random() < MUTATION_RATE:
+        a, b = random.sample(range(len(route)), 2)
+        route[a], route[b] = route[b], route[a]
+    return route
+
+# -----------------------------
+# 8. GA Main Loop
+# -----------------------------
+def genetic_algorithm():
+    population = initial_population()
+    best_route = min(population, key=route_distance)
+
+    for gen in range(GENERATIONS):
+        new_population = []
+
+        for _ in range(POP_SIZE):
+            parent1 = selection(population)
+            parent2 = selection(population)
+            child = crossover(parent1, parent2)
+            child = mutate(child)
+            new_population.append(child)
+
+        population = new_population
+
+        current_best = min(population, key=route_distance)
+        if route_distance(current_best) < route_distance(best_route):
+            best_route = current_best
+
+        if gen % 20 == 0:  # Print progress every 20 generations
+            print(f"Gen {gen}: Best distance = {route_distance(best_route):.2f}")
+
+    return best_route, route_distance(best_route)
+
+# -----------------------------
+# 9. Run Algorithm
+# -----------------------------
+best, dist = genetic_algorithm()
+print("\nBest Route Found:", best)
+print("Best Distance:", dist)
