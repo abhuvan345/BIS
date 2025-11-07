@@ -1,0 +1,59 @@
+import numpy as np
+import math
+
+# Objective Function (example: minimize Sphere function)
+def objective_function(x):
+    return np.sum(x**2)
+
+# Lévy flight function
+def levy_flight(Lambda):
+    # Using math module instead of np.math
+    sigma = (math.gamma(1 + Lambda) * math.sin(math.pi * Lambda / 2) /
+             (math.gamma((1 + Lambda) / 2) * Lambda * 2 ** ((Lambda - 1) / 2))) ** (1 / Lambda)
+    u = np.random.randn() * sigma
+    v = np.random.randn()
+    step = u / abs(v) ** (1 / Lambda)
+    return step
+
+# Cuckoo Search Algorithm
+def cuckoo_search(obj_func, dim=2, n=15, pa=0.25, alpha=0.01, max_iter=100):
+    # Initialize nests randomly
+    nests = np.random.uniform(-5, 5, size=(n, dim))
+    fitness = np.array([obj_func(x) for x in nests])
+   
+    # Find the current best nest
+    best_idx = np.argmin(fitness)
+    best = nests[best_idx].copy()   
+    for t in range(max_iter):
+        for i in range(n):
+            # Generate a new solution via Lévy flight
+            step_size = alpha * levy_flight(1.5)
+            new_nest = nests[i] + step_size * (nests[i] - best)
+            new_nest = np.clip(new_nest, -5, 5)
+           
+            # Evaluate fitness
+            f_new = obj_func(new_nest)
+           
+            # Replace if the new solution is better
+            if f_new < fitness[i]:
+                nests[i] = new_nest
+                fitness[i] = f_new
+               
+        # Abandon some nests (with probability pa)
+        for i in range(n):
+            if np.random.rand() < pa:
+                nests[i] = np.random.uniform(-5, 5, dim)
+                fitness[i] = obj_func(nests[i])
+       
+        # Update the best solution
+        best_idx = np.argmin(fitness)
+        if fitness[best_idx] < obj_func(best):
+            best = nests[best_idx].copy()      
+        # Print progress
+        print(f"Iteration {t+1}: Best fitness = {obj_func(best):.6f}")
+   
+    return best, obj_func(best)
+# Run the algorithm
+best_solution, best_value = cuckoo_search(objective_function, dim=2, n=20, max_iter=50)
+print("\nBest Solution:", best_solution)
+print("Best Fitness Value:", best_value)
