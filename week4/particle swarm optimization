@@ -1,0 +1,191 @@
+import numpy as np
+import random
+import matplotlib.pyplot as plt
+
+# --- 1. Utility Functions ---
+
+def create_distance_matrix(cities):
+    """Calculates the Euclidean distance matrix between all pairs of cities."""
+    num_cities = len(cities)
+    dist_matrix = np.zeros((num_cities, num_cities))
+    for i in range(num_cities):
+        for j in range(i + 1, num_cities):
+            # Calculate Euclidean distance
+            distance = np.sqrt((cities[i][0] - cities[j][0])**2 + (cities[i][1] - cities[j][1])**2)
+            dist_matrix[i, j] = dist_matrix[j, i] = distance
+    return dist_matrix
+
+def calculate_tour_length(tour, dist_matrix):
+    """Calculates the total length of a given tour (sequence of city indices)."""
+    length = 0.0
+    num_cities = len(tour)
+    for i in range(num_cities):
+        city_a = tour[i]
+        city_b = tour[(i + 1) % num_cities]  # wrap-around
+        length += dist_matrix[city_a, city_b]
+    return length
+
+# --- 2. ACO Algorithm Implementation ---
+
+def aco_tsp_solver(cities, num_ants=10, max_iterations=100, alpha=1.0, beta=5.0, rho=0.5, initial_pheromone=1.0):
+    """
+    Ant Colony Optimization (ACO) algorithm for the Traveling Salesman Problem (TSP).
+
+    Args:
+        cities (list of tuples): List of (x, y) coordinates for each city.
+        num_ants (int): Number of artificial ants.
+        max_iterations (int): Maximum number of generations to run.
+        alpha (float): Influence of the pheromone trail (tau).
+        beta (float): Influence of the heuristic information (eta, 1/distance).
+        rho (float): Pheromone evaporation rate (0 < rho < 1).
+        initial_pheromone (float): Initial pheromone value (tau_0).
+    Returns:
+        best_tour (list): Best tour found (sequence of city indices).
+        best_length (float): Length of the best tour.
+        history (list): Best length found at each iteration.
+    """
+    num_cities = len(cities)
+    dist_matrix = create_distance_matrix(cities)
+
+    # Heuristic matrix (eta_ij = 1 / distance_ij)
+    # Avoid division by zero for d_ii by adding tiny eps and then zeroing diagonal
+    eta_matrix = 1.0 / (dist_matrix + np.finfo(float).eps)
+    np.fill_diagonal(eta_matrix, 0.0)
+
+    # Initialize pheromone matrix (tau_ij)
+    pheromone_matrix = np.full((num_cities, num_cities), initial_pheromone, dtype=float)
+
+    # Initialize best tour found so far
+    best_tour = None
+    best_length = float('inf')
+    history = []
+
+    print(f"Starting ACO for {num_cities} cities with {num_ants} ants...")
+
+    for iteration in range(max_iterations):
+        all_tours = []
+        all_lengths = []
+
+        # --- Phase 1: Tour Construction ---
+        for ant in range(num_ants):
+            start_city = random.randint(0, num_cities - 1)
+            tour = [start_city]
+            visited = {start_city}
+
+            while len(tour) < num_cities:
+                current_city = tour[-1]
+                unvisited_cities = [c for c in range(num_cities) if c not in visited]
+
+                if not unvisited_cities:
+                    break  # safety check
+
+                # Calculate probabilities P_ij for each candidate next city
+                probabilities = []
+                denominator = 0.0
+
+                for next_city in unvisited_cities:
+                    tau = pheromone_matrix[current_city, next_city] ** alpha
+                    eta = eta_matrix[current_city, next_city] ** beta
+                    numerator = tau * eta
+                    probabilities.append((next_city, numerator))
+                    denominator += numerator
+
+                if denominator == 0.0:
+                    # Fallback to random choice if all numerators are zero
+                    next_city = random.choice(unvisited_cities)
+                else:
+                    prob_values = [p[1] / denominator for p in probabilities]
+                    candidates = [p[0] for p in probabilities]
+                    next_city = random.choices(candidates, weights=prob_values, k=1)[0]
+
+                tour.append(next_city)
+                visited.add(next_city)
+
+            # Complete tour (should include all cities)
+            tour_length = calculate_tour_length(tour, dist_matrix)
+            all_tours.append(tour)
+            all_lengths.append(tour_length)
+
+            # Update global best if this ant is better
+            if tour_length < best_length:
+                best_length = tour_length
+                best_tour = tour.copy()
+
+        # --- Phase 2: Pheromone Update ---
+        # 1. Evaporation:
+        pheromone_matrix = (1.0 - rho) * pheromone_matrix
+
+        # 2. Deposition: best-so-far ant deposits pheromone (Ant System variant)
+        if best_tour is not None and best_length > 0:
+            delta_tau = 1.0 / best_length
+            for i in range(num_cities):
+                city_a = best_tour[i]
+                city_b = best_tour[(i + 1) % num_cities]
+                pheromone_matrix[city_a, city_b] += delta_tau
+                pheromone_matrix[city_b, city_a] += delta_tau  # symmetric
+
+        history.append(best_length)
+        print(f"Iteration {iteration + 1}/{max_iterations}: Best Length = {best_length:.4f}")
+
+    return best_tour, best_length, history
+
+# --- 3. Example Usage and Visualization ---
+
+def run_aco_example():
+    # Define a simple set of 10 cities (x, y coordinates)
+    random.seed(42)  # for reproducibility (random)
+    np.random.seed(42)  # for reproducibility (numpy)
+    cities = [(random.uniform(0, 10), random.uniform(0, 10)) for _ in range(10)]
+
+    # Run the ACO solver
+    best_tour, best_length, history = aco_tsp_solver(
+        cities,
+        num_ants=20,
+        max_iterations=50,
+        alpha=1.0,
+        beta=5.0,
+        rho=0.1,
+        initial_pheromone=1.0
+    )
+
+    print("\n--- Results ---")
+    print(f"Cities: {cities}")
+    print(f"Best Tour (City Indices): {best_tour}")
+    print(f"Best Tour Length: {best_length:.4f}")
+
+    # --- Visualization ---
+    if best_tour:
+        # Prepare coordinates for plotting the best tour path
+        x_coords = [cities[i][0] for i in best_tour]
+        y_coords = [cities[i][1] for i in best_tour]
+
+        # Close the loop for visualization
+        x_coords.append(x_coords[0])
+        y_coords.append(y_coords[0])
+
+        plt.figure(figsize=(10, 5))
+
+        # Plot 1: Tour Path
+        plt.subplot(1, 2, 1)
+        plt.plot(x_coords, y_coords, 'o-', markerfacecolor='red', markersize=8)
+        # Label cities with their index
+        for i, (x, y) in enumerate(cities):
+            plt.text(x + 0.1, y + 0.1, str(i), fontsize=9)
+        plt.title(f'ACO Best TSP Tour (Length: {best_length:.2f})')
+        plt.xlabel('X Coordinate')
+        plt.ylabel('Y Coordinate')
+        plt.grid(True)
+
+        # Plot 2: Convergence History
+        plt.subplot(1, 2, 2)
+        plt.plot(history, linewidth=2)
+        plt.title('ACO Convergence')
+        plt.xlabel('Iteration')
+        plt.ylabel('Best Tour Length')
+        plt.grid(True)
+        plt.tight_layout()
+        plt.show()
+
+# Execute the example
+if __name__ == '__main__':
+    run_aco_example()
